@@ -12,6 +12,7 @@
 #define TA_REE_AGENT_CMD_DEL_REFERENCE     3
 #define TA_REE_AGENT_CMD_MATCH_REFERENCE     4
 #define TA_REE_AGENT_CMD_JUDGE_REFERENCE     5
+#define TA_REE_AGENT_CMD_SM3    6
 
 
 //struct for kernel CA

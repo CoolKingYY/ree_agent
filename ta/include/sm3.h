@@ -1,61 +1,113 @@
-/*writen by tjs in 2011-4-19*/
+#ifndef CUBE_DATA_TYPE_H
+#define CUBE_DATA_TYPE_H
+
+#ifndef TSS_PLATFORM_H
+typedef unsigned char BYTE;
+typedef unsigned short int UINT16;
+typedef unsigned int UINT32;
+typedef unsigned long int UINT64;
+typedef unsigned short int WORD;
+typedef unsigned int DWORD;
+#endif
+
+#define BITSTRING (unsigned char *)
+#define CUBE_DEBUG
+
+#define DIGEST_SIZE 32
+// #define PAGE_SIZE	4096
+#ifndef NULL
+#define NULL 0
+#endif
+
+#define IS_ERR(ptr) (ptr - 4096 < 0)
+#ifdef CUBE_DEBUG
+#define cube_dbg(format, arg...) \
+  printk(KERN_DEBUG, format, ##arg)
+#else
+#define cube_dbg(format, arg...) \
+  do                             \
+  {                              \
+  } while (0)
+#endif
+#endif
+
+#ifndef CRYPTO_FUNC_H
+#define CRYPTO_FUNC_H
+#define DIGEST_SIZE 32
+
+typedef struct
+{
+  UINT32 total_bytes_High;
+  UINT32 total_bytes_Low;
+  UINT32 vector[8];
+  BYTE buffer[64]; /* 64 byte buffer                            */
+
+  BYTE ipad[64]; // HMAC: inner padding
+  BYTE opad[64]; // HMAC: outer padding
+} sm3_context;
+
+int SM3_init(sm3_context *index);
+int SM3_update(sm3_context *index, BYTE *chunk_data, UINT32 chunk_length);
+int SM3_final(sm3_context *index, UINT32 *SM3_hash);
+void SM3_hmac(BYTE *key, int keylen, BYTE *input, int ilen, UINT32 *output);
+
+#endif
 
 #ifndef _SM3_
 #define _SM3_
 
-#include <inttypes.h>
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
-//#define DEBUG
+// #define DEBUG
 
 typedef struct
 {
-  uint32_t total_bytes_High;
-  uint32_t total_bytes_Low;
-  uint32_t vector[8];
-  uint8_t  buffer[64];     /* 64 byte buffer                            */
+  UINT32 total_bytes_High;
+  UINT32 total_bytes_Low;
+  UINT32 vector[8];
+  BYTE buffer[64]; // 64 byte buffer
+
+  BYTE ipad[64]; // HMAC: inner padding
+  BYTE opad[64]; // HMAC: outer padding
+
 } SM3_context;
 
-
-#define rol(x,n) ((x << n) | ((x & 0xFFFFFFFF) >> (32 - n)))
+#define rol(x, n) ((x << n) | ((x & 0xFFFFFFFF) >> (32 - n)))
 /*
-inline int rol(uint32_t operand, uint8_t width){ 
-	 asm volatile("rol %%cl, %%eax" 
-               : "=a" (operand) 
-               : "a" (operand), "c" (width) 
-               ); 
+inline int rol(UINT32 operand, BYTE width){
+   asm volatile("rol %%cl, %%eax"
+               : "=a" (operand)
+               : "a" (operand), "c" (width)
+               );
 }
 */
-#define P0(x) ((x^(rol(x,9))^(rol(x,17))))
-#define P1(x) ((x^(rol(x,15))^(rol(x,23))))
+#define P0(x) ((x ^ (rol(x, 9)) ^ (rol(x, 17))))
+#define P1(x) ((x ^ (rol(x, 15)) ^ (rol(x, 23))))
 
-#define CONCAT_4_BYTES( w32, w8, w8_i)            \
-{                                                 \
-    (w32) = ( (uint32_t) (w8)[(w8_i)    ] << 24 ) |  \
-            ( (uint32_t) (w8)[(w8_i) + 1] << 16 ) |  \
-            ( (uint32_t) (w8)[(w8_i) + 2] <<  8 ) |  \
-            ( (uint32_t) (w8)[(w8_i) + 3]       );   \
-}
+#define CONCAT_4_BYTES(w32, w8, w8_i)          \
+  {                                            \
+    (w32) = ((UINT32)(w8)[(w8_i)] << 24) |     \
+            ((UINT32)(w8)[(w8_i) + 1] << 16) | \
+            ((UINT32)(w8)[(w8_i) + 2] << 8) |  \
+            ((UINT32)(w8)[(w8_i) + 3]);        \
+  }
 
-#define SPLIT_INTO_4_BYTES( w32, w8, w8_i)        \
-{                                                 \
-    (w8)[(w8_i)] = (uint8_t) ( (w32) >> 24 );    \
-    (w8)[(w8_i) + 1] = (uint8_t) ( (w32) >> 16 );    \
-    (w8)[(w8_i) + 2] = (uint8_t) ( (w32) >>  8 );    \
-    (w8)[(w8_i) + 3] = (uint8_t) ( (w32)       );    \
-}
+#define SPLIT_INTO_4_BYTES(w32, w8, w8_i)   \
+  {                                         \
+    (w8)[(w8_i)] = (BYTE)((w32) >> 24);     \
+    (w8)[(w8_i) + 1] = (BYTE)((w32) >> 16); \
+    (w8)[(w8_i) + 2] = (BYTE)((w32) >> 8);  \
+    (w8)[(w8_i) + 3] = (BYTE)((w32));       \
+  }
 
-static uint8_t SM3_padding[64] =
-{
- (uint8_t) 0x80, (uint8_t) 0, (uint8_t) 0, (uint8_t) 0, (uint8_t) 0, (uint8_t) 0, (uint8_t) 0, (uint8_t) 0, (uint8_t) 0, (uint8_t) 0, (uint8_t) 0, (uint8_t) 0, (uint8_t) 0, (uint8_t) 0, (uint8_t) 0, (uint8_t) 0,
- (uint8_t)    0, (uint8_t) 0, (uint8_t) 0, (uint8_t) 0, (uint8_t) 0, (uint8_t) 0, (uint8_t) 0, (uint8_t) 0, (uint8_t) 0, (uint8_t) 0, (uint8_t) 0, (uint8_t) 0, (uint8_t) 0, (uint8_t) 0, (uint8_t) 0, (uint8_t) 0,
- (uint8_t)    0, (uint8_t) 0, (uint8_t) 0, (uint8_t) 0, (uint8_t) 0, (uint8_t) 0, (uint8_t) 0, (uint8_t) 0, (uint8_t) 0, (uint8_t) 0, (uint8_t) 0, (uint8_t) 0, (uint8_t) 0, (uint8_t) 0, (uint8_t) 0, (uint8_t) 0,
- (uint8_t)    0, (uint8_t) 0, (uint8_t) 0, (uint8_t) 0, (uint8_t) 0, (uint8_t) 0, (uint8_t) 0, (uint8_t) 0, (uint8_t) 0, (uint8_t) 0, (uint8_t) 0, (uint8_t) 0, (uint8_t) 0, (uint8_t) 0, (uint8_t) 0, (uint8_t) 0
-};
+static BYTE SM3_padding[64] =
+    {
+        (BYTE)0x80, (BYTE)0, (BYTE)0, (BYTE)0, (BYTE)0, (BYTE)0, (BYTE)0, (BYTE)0, (BYTE)0, (BYTE)0, (BYTE)0, (BYTE)0, (BYTE)0, (BYTE)0, (BYTE)0, (BYTE)0,
+        (BYTE)0, (BYTE)0, (BYTE)0, (BYTE)0, (BYTE)0, (BYTE)0, (BYTE)0, (BYTE)0, (BYTE)0, (BYTE)0, (BYTE)0, (BYTE)0, (BYTE)0, (BYTE)0, (BYTE)0, (BYTE)0,
+        (BYTE)0, (BYTE)0, (BYTE)0, (BYTE)0, (BYTE)0, (BYTE)0, (BYTE)0, (BYTE)0, (BYTE)0, (BYTE)0, (BYTE)0, (BYTE)0, (BYTE)0, (BYTE)0, (BYTE)0, (BYTE)0,
+        (BYTE)0, (BYTE)0, (BYTE)0, (BYTE)0, (BYTE)0, (BYTE)0, (BYTE)0, (BYTE)0, (BYTE)0, (BYTE)0, (BYTE)0, (BYTE)0, (BYTE)0, (BYTE)0, (BYTE)0, (BYTE)0};
 
+#endif
 
-int SM3_init(SM3_context *index)
+int SM3_init(sm3_context *index)
 {
   if (index == NULL)
   {
@@ -76,10 +128,11 @@ int SM3_init(SM3_context *index)
   return 0;
 }
 
-static void SM3_CF(SM3_context *index, uint8_t *byte_64_block)
+static void SM3_CF(sm3_context *index, BYTE *byte_64_block)
 {
-  uint32_t j, temp, W[68];
-  uint32_t A, B, C, D, E, F, G, H, SS1, SS2, TT1, TT2;
+  UINT32 j, temp, W[68];
+
+  UINT32 A, B, C, D, E, F, G, H, SS1, SS2, TT1, TT2;
   CONCAT_4_BYTES(W[0], byte_64_block, 0);
   CONCAT_4_BYTES(W[1], byte_64_block, 4);
   CONCAT_4_BYTES(W[2], byte_64_block, 8);
@@ -171,11 +224,11 @@ static void SM3_CF(SM3_context *index, uint8_t *byte_64_block)
   index->vector[7] ^= H;
 }
 
-int SM3_update(SM3_context *index, uint8_t *chunk_data, uint32_t chunk_length)
+int SM3_update(sm3_context *index, BYTE *chunk_data, UINT32 chunk_length)
 {
 
-  uint32_t left, fill;
-  uint32_t i;
+  UINT32 left, fill;
+  UINT32 i;
 
   if ((index == NULL) || (chunk_data == NULL) || (chunk_length < 1))
   {
@@ -221,12 +274,12 @@ int SM3_update(SM3_context *index, uint8_t *chunk_data, uint32_t chunk_length)
   return 0;
 }
 
-int SM3_final(SM3_context *index, uint32_t *SM3_hash)
+int SM3_final(sm3_context *index, UINT32 *SM3_hash)
 {
 
-  uint32_t last, padn;
-  uint32_t high, low;
-  uint8_t msglen[8];
+  UINT32 last, padn;
+  UINT32 high, low;
+  BYTE msglen[8];
   int ret;
   if ((index == NULL) || (SM3_hash == NULL))
   {
@@ -254,41 +307,60 @@ int SM3_final(SM3_context *index, uint32_t *SM3_hash)
   return 0;
 }
 
-int calculate_sm3(char *data, size_t data_size, uint32_t *SM3_hash)
+int calculate_sm3(unsigned char *data, unsigned int data_size, UINT32 *SM3_hash)
 {
-    int result;
-    size_t bytes_to_copy = 0;
-    SM3_context index;
+  int result;
+  int bytes_to_copy = 0;
+  SM3_context index;
 
-    /* Initialise sm3-Context */
-    result = SM3_init(&index);
+  result = SM3_init(&index);
+  if (result)
+  {
+    return -1;
+  }
+
+  bytes_to_copy = data_size;
+  while (bytes_to_copy > 4096)
+  {
+    result = SM3_update(&index, data, 4096);
     if (result)
     {
-        return -1;
+      return -1;
     }
+    data += 4096;
+    bytes_to_copy = bytes_to_copy - 4096;
+  }
 
-    bytes_to_copy = data_size;
-    while (bytes_to_copy > 4096)
-    {
-        result = SM3_update(&index, data, 4096);
-        if (result)
-        {
-            return -1;
-        }
-        data += 4096;
-        bytes_to_copy = bytes_to_copy - 4096;
-    }
+  // And the last one
+  result = SM3_update(&index, data, bytes_to_copy);
+  if (result)
+  {
+    return -1;
+  }
 
-    // And the last one
-    result = SM3_update(&index, data, bytes_to_copy);
-    if (result)
-    {
-        return -1;
-    }
-
-    result = SM3_final(&index, SM3_hash);
-    if (result)
-        return -1;
-    return 0;
+  result = SM3_final(&index, SM3_hash);
+  if (result)
+    return -1;
+  return 0;
 }
-#endif
+
+int calculate_pathsm3(char *filepath, UINT32 *SM3_hash)
+{
+
+  int result;
+  SM3_context index;
+  result = SM3_init(&index);
+  if (result)
+  {
+    return -1;
+  }
+  result = SM3_update(&index, filepath, strlen(filepath));
+  if (result)
+  {
+    return -1;
+  }
+  result = SM3_final(&index, SM3_hash);
+  if (result)
+    return -1;
+  return 0;
+}

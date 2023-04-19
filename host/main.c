@@ -391,6 +391,27 @@ int main(int argc, char *argv[])
 
 	op.paramTypes = TEEC_PARAM_TYPES(TEEC_MEMREF_WHOLE, TEEC_NONE, TEEC_NONE, TEEC_NONE);
 	op.params[0].memref.parent = &mem_p;
+	op.params[0].value = 22; 	//上锁
+
+	//----------------------------注意！此处为测试代码，为了测试所有功能---------------------------------------------
+	REEReferenceValue *ref2 = (REEReferenceValue *)malloc(sizeof(REEReferenceValue));
+	char file2[] = "/root/hello";
+	get_reference(ref, file2);
+	printf("DEBUG REE_AGENT : Allocated memory in TA at address %p with size %d bytes\n", ref2->value, ref2->length);
+	mem_p.buffer = ref2->value;
+	mem_p.size = ref2->length;
+	mem_p.flags = TEEC_MEM_INPUT | TEEC_MEM_OUTPUT;
+	res = TEEC_RegisterSharedMemory(&ctx, &mem_p);
+	if (res != TEEC_SUCCESS)
+	{
+		printf("Failed to register DATA shared memory\n");
+		TEEC_ReleaseSharedMemory(&mem_p);
+		TEEC_CloseSession(&sess);
+		exit(0);
+	}
+	op.paramTypes = TEEC_PARAM_TYPES(TEEC_MEMREF_WHOLE, TEEC_NONE, TEEC_NONE, TEEC_NONE);
+	op.params[1].memref.parent = &mem_p;
+	//---------------------------------------------------------------------------------------------------------
 
 	// 调用TA端 创建持久化内存功能，作为测试，此处已经写入多个摘要值
 	printf("debug yht :创建持久化内存 has been called\n");
