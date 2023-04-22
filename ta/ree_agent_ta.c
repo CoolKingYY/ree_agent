@@ -13,8 +13,6 @@
 #define HASH_SIZE 32
 #define MAX_REFERENCES 16000
 
-
-
 // 结构体的内存在后面会释放
 TEEReferenceValue *ref;
 KernelMessage *mem_data;
