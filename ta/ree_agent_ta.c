@@ -1,10 +1,10 @@
 
-#include <tee_internal_api.h>
-#include <tee_internal_api_extensions.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <tee_api_defines.h>
+#include <tee_internal_api.h>
+#include <tee_internal_api_extensions.h>
 #include <user_ta_header_defines.h>
 #include <time.h>
 #include "ree_agent_ta.h"
@@ -68,18 +68,15 @@ static TEE_Result ref_temporary_storage_buffer(uint32_t param_types, TEE_Param p
     ref->length = params[0].memref.size;
 
     // 测试代码，配置初始化TEE_Message参数
-    printf("00000000000000000000000000000000000000000000000000000000000000000000000000000000\n");
     mem_data = (KernelMessage *)TEE_Malloc(sizeof(KernelMessage), TEE_MALLOC_FILL_ZERO);
     mem_data->operator_type = TA_REE_AGENT_CMD_MATCH_REFERENCE;
     mem_data->baseline_type = 0;
     mem_data->num = 1;
     mem_data->result = -1;
-    DMSG("************************************************************************");
     tee_printf(sm3_hash, HASH_SIZE);
     // mem_data->SM3_array = (Baseline *)TEE_Malloc(mem_data->num * HASH_SIZE, TEE_MALLOC_FILL_ZERO);
     mem_data->SM3_array[0] = *(Baseline *)sm3_hash;
     tee_printf(mem_data->SM3_array, mem_data->num * HASH_SIZE);
-    printf("11111111111111111111111111111111111111111111111111111111111111111111111111111111\n");
 
     return TEE_SUCCESS;
 }
