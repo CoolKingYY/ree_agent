@@ -69,16 +69,16 @@ static TEE_Result ref_temporary_storage_buffer(uint32_t param_types, TEE_Param p
 
     // 此部分为内核端的测试代码，配置初始化TEE_Message参数
     int a = 16;
-    UINT32 *sm = TEE_Malloc(HASH_SIZE, TEE_MALLOC_FILL_ZERO);
-    calculate_sm3(&a, sizeof(int), sm);
+    //UINT32 *sm = TEE_Malloc(HASH_SIZE, TEE_MALLOC_FILL_ZERO);
+    //calculate_sm3(&a, sizeof(int), sm);
     mem_data = (KernelMessage *)TEE_Malloc(sizeof(KernelMessage), TEE_MALLOC_FILL_ZERO);
     mem_data->operator_type = TA_REE_AGENT_CMD_MATCH_REFERENCE;
     mem_data->baseline_type = 0;
-    mem_data->num = 2;
+    mem_data->num = 1;
     mem_data->result = -1;
     tee_printf(sm3_hash, HASH_SIZE);
     mem_data->SM3_array[0] = *(Baseline *)sm3_hash;
-    mem_data->SM3_array[1] = *(Baseline *)sm;   // 此处如果被删除后，再次度量或查找会失败
+    //mem_data->SM3_array[1] = *(Baseline *)sm;   // 此处如果被删除后，再次度量或查找会失败
     tee_printf(mem_data->SM3_array, mem_data->num * HASH_SIZE);
 
     return TEE_SUCCESS;
@@ -508,6 +508,7 @@ void TA_CloseSessionEntryPoint(void __maybe_unused *sess_ctx)
     (void)&sess_ctx; /* Unused parameter */
     TEE_Free(teebuf);
     TEE_Free(sm3_hash);
+    //TEE_Free(sm);
     TEE_Free(mem_data);
     TEE_Free(ref);
     DMSG("Goodbye!\n");

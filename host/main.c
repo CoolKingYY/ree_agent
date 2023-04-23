@@ -8,18 +8,26 @@
 #include <ree_agent_ta.h>
 #include "sm3.h"
 #define HASH_SIZE 32
-UINT32 *sm3_hash;
+unsigned char sm3_hash[HASH_SIZE];
 
-typedef struct ree_reference_value {
+//若要调用接口，例：transfer_reference_in_tee_persistent_mem(ref->value,ref->length);并且修改main函数代码即可
+//若要修改读取的文件，main函数中修改file数组的值
+
+typedef struct ree_reference_value
+{
 	int length;
-	const void* value;
-}REEReferenceValue;
+	const void *value;
+} REEReferenceValue;
+// 定义全局变量，共享内存
+TEEC_SharedMemory mem_p;
 
-//获取存储在REE端的摘要值
-void get_reference(REEReferenceValue* ref_struct, char file_name[]) {
+// 获取存储在REE端的摘要值-----------------------------------------------------------------
+void get_reference(REEReferenceValue *ref_struct, char file_name[])
+{
 	// 读入摘要值文件文件
-	FILE* fp = fopen(file_name, "rb");
-	if (fp == NULL) {
+	FILE *fp = fopen(file_name, "rb");
+	if (fp == NULL)
+	{
 		printf("DEBUG REE_AGENT : Failed to open SM3_file\n");
 		exit(0);
 	}
@@ -28,43 +36,304 @@ void get_reference(REEReferenceValue* ref_struct, char file_name[]) {
 	long int file_size = ftell(fp);
 	rewind(fp);
 	// 分配一段内存
-	unsigned char* buffer = (unsigned char*)malloc(file_size);
+	unsigned char *buffer = (unsigned char *)malloc(file_size);
 	// 检查内存分配是否成功
-	if (buffer == NULL) {
+	if (buffer == NULL)
+	{
 		perror("DEBUG REE_AGENT : Failed to allocate memory");
 	}
 	// 读取文件内容到buffer中
 	size_t read_size = fread(buffer, 1, file_size, fp);
-	if (read_size != file_size) {
+	if (read_size != file_size)
+	{
 		perror("DEBUG REE_AGENT : Failed to read file");
 		exit(EXIT_FAILURE);
 	}
 
-	ref_struct->value = malloc(file_size);
-	memcpy(ref_struct->value , buffer , file_size);
+	ref_struct->value = buffer;
 	ref_struct->length = file_size;
 
-	free(buffer);
+	// 此处并不需要释放buffer
 	fclose(fp);
 }
 
-//请求TEE增加内存数据库中的基准值,未完成
-TEEC_Result tee_reference_add(TEEC_Session sesssion, TEEC_Operation operation, void* value, int size, uint32_t err_origin) {
-	//TEEC_Result res;
-	//调用TA端 写入数据至持久化内存 ， 作为测试，在写入一个摘要值
-/* 	printf("debug yht :增加基准值 has been called\n");
+// 向TEE传递开机后的最初基准值,并且请求创建持久化内存--------------------------------------------------
+void transfer_reference_in_tee_persistent_mem(void *reference, int size)
+{
+	TEEC_Result res;
+	TEEC_Context ctx;
+	TEEC_Session sess;
+	TEEC_Operation op;
+	TEEC_UUID uuid = TA_REE_AGENT_UUID;
+	uint32_t err_origin;
+
+
+	/* context 初始化 */
+	res = TEEC_InitializeContext(NULL, &ctx);
+	if (res != TEEC_SUCCESS)
+		errx(1, "TEEC_InitializeContext failed with code 0x%x", res);
+
+	/*打开session*/
+	res = TEEC_OpenSession(&ctx, &sess, &uuid, TEEC_LOGIN_PUBLIC, NULL, NULL, &err_origin);
+	if (res != TEEC_SUCCESS)
+		errx(1, "TEEC_Opensession failed with code 0x%x origin 0x%x",
+			 res, err_origin);
+	/*初始化操作*/
+	memset(&op, 0, sizeof(op));
+	memset((void *)&mem_p, 0, sizeof(mem_p));
+
+	/*设置共享内存的内容和大小*/
+	mem_p.buffer = reference;
+	mem_p.size = size;
+	mem_p.flags = TEEC_MEM_INPUT | TEEC_MEM_OUTPUT;
+
+	// 注册共享内存
+	res = TEEC_RegisterSharedMemory(&ctx, &mem_p);
+	if (res != TEEC_SUCCESS)
+	{
+		printf("Failed to register DATA shared memory\n");
+		TEEC_ReleaseSharedMemory(&mem_p);
+		TEEC_CloseSession(&sess);
+		exit(0);
+	}
+
+	// 传递共享内存至TEE端
+	op.paramTypes = TEEC_PARAM_TYPES(TEEC_MEMREF_WHOLE, TEEC_NONE, TEEC_NONE, TEEC_NONE);
+	op.params[0].memref.parent = &mem_p;
+
+	// 调用TA端创建持久化内存功能，并且写入摘要值
+	printf("debug yht :创建持久化内存 has been called\n");
+	res = TEEC_InvokeCommand(&sess, TA_REE_AGENT_CMD_CREATE_PERSISTENT_MEM, &op, &err_origin);
+	if (res != TEEC_SUCCESS)
+		errx(1, "TEEC_InvokeCommand failed with code 0x%x origin 0x%x", res, err_origin);
+	printf("debug yht :创建持久化内存 successed\n");
+
+	// 结束会话
+	TEEC_CloseSession(&sess);
+	TEEC_FinalizeContext(&ctx);
+}
+
+// 请求TEE增加内存数据库中的基准值-----------------------------------------------------------------
+void tee_reference_add(void *value, int size)
+{
+	TEEC_Result res;
+	TEEC_Context ctx;
+	TEEC_Session sess;
+	TEEC_Operation op;
+	TEEC_UUID uuid = TA_REE_AGENT_UUID;
+	uint32_t err_origin;
+
+	/* context 初始化 */
+	res = TEEC_InitializeContext(NULL, &ctx);
+	if (res != TEEC_SUCCESS)
+		errx(1, "TEEC_InitializeContext failed with code 0x%x", res);
+
+	/*打开session*/
+	res = TEEC_OpenSession(&ctx, &sess, &uuid, TEEC_LOGIN_PUBLIC, NULL, NULL, &err_origin);
+	if (res != TEEC_SUCCESS)
+		errx(1, "TEEC_Opensession failed with code 0x%x origin 0x%x",
+			 res, err_origin);
+	/*初始化操作*/
+	memset(&op, 0, sizeof(op));
+	memset((void *)&mem_p, 0, sizeof(mem_p));
+	/*设置共享内存的内容和大小和权限*/
+	mem_p.buffer = value;
+	mem_p.size = size;
+	mem_p.flags = TEEC_MEM_INPUT | TEEC_MEM_OUTPUT;
+
+	// 注册共享内存
+	res = TEEC_RegisterSharedMemory(&ctx, &mem_p);
+	if (res != TEEC_SUCCESS)
+	{
+		printf("Failed to register DATA shared memory\n");
+		TEEC_ReleaseSharedMemory(&mem_p);
+		TEEC_CloseSession(&sess);
+		exit(0);
+	}
+
+	// 传递共享内存至TEE端
+	op.paramTypes = TEEC_PARAM_TYPES(TEEC_MEMREF_WHOLE, TEEC_NONE, TEEC_NONE, TEEC_NONE);
+	op.params[0].memref.parent = &mem_p;
+
+	// 请求写入数据
+	printf("debug yht :增加基准值 has been called\n");
 	res = TEEC_InvokeCommand(&sess, TA_REE_AGENT_CMD_ADD_REFERENCE, &op, &err_origin);
 	if (res != TEEC_SUCCESS)
 		errx(1, "TEEC_InvokeCommand failed with code 0x%x origin 0x%x", res, err_origin);
-	printf("debug yht :增加基准值 successed\n"); */
-}
-//请求TEE删除内存数据库中的基准值
-TEEC_Result tee_reference_remove(void* value, int size) {}
-//请求TEE查找内存数据库中的基准值
-TEEC_Result tee_reference_match(void* value, int size) {}
-//向TEE传递开机后的最初基准值
-TEEC_Result transfer_reference_to_tee(void* reference, int size) {}
+	printf("debug yht :增加基准值 successed\n");
 
+	// 结束会话
+	TEEC_CloseSession(&sess);
+	TEEC_FinalizeContext(&ctx);
+}
+// 请求TEE删除内存数据库中的基准值-----------------------------------------------------------------
+void tee_reference_remove(void *value, int size)
+{
+	TEEC_Result res;
+	TEEC_Context ctx;
+	TEEC_Session sess;
+	TEEC_Operation op;
+	TEEC_UUID uuid = TA_REE_AGENT_UUID;
+	uint32_t err_origin;
+
+	/* context 初始化 */
+	res = TEEC_InitializeContext(NULL, &ctx);
+	if (res != TEEC_SUCCESS)
+		errx(1, "TEEC_InitializeContext failed with code 0x%x", res);
+
+	/*打开session*/
+	res = TEEC_OpenSession(&ctx, &sess, &uuid, TEEC_LOGIN_PUBLIC, NULL, NULL, &err_origin);
+	if (res != TEEC_SUCCESS)
+		errx(1, "TEEC_Opensession failed with code 0x%x origin 0x%x",
+			 res, err_origin);
+	/*初始化操作*/
+	memset(&op, 0, sizeof(op));
+	memset((void *)&mem_p, 0, sizeof(mem_p));
+	/*设置共享内存的内容和大小和权限*/
+	mem_p.buffer = value;
+	mem_p.size = size;
+	mem_p.flags = TEEC_MEM_INPUT | TEEC_MEM_OUTPUT;
+
+	// 注册共享内存
+	res = TEEC_RegisterSharedMemory(&ctx, &mem_p);
+	if (res != TEEC_SUCCESS)
+	{
+		printf("Failed to register DATA shared memory\n");
+		TEEC_ReleaseSharedMemory(&mem_p);
+		TEEC_CloseSession(&sess);
+		exit(0);
+	}
+
+	// 传递共享内存至TEE端
+	op.paramTypes = TEEC_PARAM_TYPES(TEEC_MEMREF_WHOLE, TEEC_NONE, TEEC_NONE, TEEC_NONE);
+	op.params[0].memref.parent = &mem_p;
+
+	// 删除某个特定的基准值
+	printf("debug yht :删除基准值 has been called\n");
+	res = TEEC_InvokeCommand(&sess, TA_REE_AGENT_CMD_DEL_REFERENCE, &op, &err_origin);
+	if (res != TEEC_SUCCESS)
+		errx(1, "TEEC_InvokeCommand failed with code 0x%x origin 0x%x", res, err_origin);
+	printf("debug yht :删除基准值 successed\n");
+
+	// 结束会话
+	TEEC_CloseSession(&sess);
+	TEEC_FinalizeContext(&ctx);
+}
+// 请求TEE查找内存数据库中的基准值-----------------------------------------------------------------
+void tee_reference_match(void *value, int size)
+{
+	TEEC_Result res;
+	TEEC_Context ctx;
+	TEEC_Session sess;
+	TEEC_Operation op;
+	TEEC_UUID uuid = TA_REE_AGENT_UUID;
+	uint32_t err_origin;
+	
+
+	/* context 初始化 */
+	res = TEEC_InitializeContext(NULL, &ctx);
+	if (res != TEEC_SUCCESS)
+		errx(1, "TEEC_InitializeContext failed with code 0x%x", res);
+
+	/*打开session*/
+	res = TEEC_OpenSession(&ctx, &sess, &uuid, TEEC_LOGIN_PUBLIC, NULL, NULL, &err_origin);
+	if (res != TEEC_SUCCESS)
+		errx(1, "TEEC_Opensession failed with code 0x%x origin 0x%x",
+			 res, err_origin);
+
+	/*初始化操作*/
+	memset(&op, 0, sizeof(op));
+	memset((void *)&mem_p, 0, sizeof(mem_p));
+
+	/*设置共享内存的内容和大小和权限*/
+	mem_p.buffer = value;
+	mem_p.size = size;
+	mem_p.flags = TEEC_MEM_INPUT | TEEC_MEM_OUTPUT;
+
+	// 注册共享内存
+	res = TEEC_RegisterSharedMemory(&ctx, &mem_p);
+	if (res != TEEC_SUCCESS)
+	{
+		printf("Failed to register DATA shared memory\n");
+		TEEC_ReleaseSharedMemory(&mem_p);
+		TEEC_CloseSession(&sess);
+		exit(0);
+	}
+
+	// 传递共享内存至TEE端
+	op.paramTypes = TEEC_PARAM_TYPES(TEEC_MEMREF_WHOLE, TEEC_NONE, TEEC_NONE, TEEC_NONE);
+	op.params[0].memref.parent = &mem_p;
+
+	// 匹配数据
+	printf("debug yht :查找基准值 has been called\n");
+	res = TEEC_InvokeCommand(&sess, TA_REE_AGENT_CMD_MATCH_REFERENCE, &op, &err_origin);
+	if (res != TEEC_SUCCESS)
+		errx(1, "TEEC_InvokeCommand failed with code 0x%x origin 0x%x", res, err_origin);
+	printf("debug yht :查找基准值 successed\n");
+
+	// 结束会话
+	TEEC_CloseSession(&sess);
+	TEEC_FinalizeContext(&ctx);
+}
+// 请求TEE度量内存数据库中的基准值-----------------------------------------------------------------
+void tee_reference_judge(void *value, int size)
+{
+	TEEC_Result res;
+	TEEC_Context ctx;
+	TEEC_Session sess;
+	TEEC_Operation op;
+	TEEC_UUID uuid = TA_REE_AGENT_UUID;
+	uint32_t err_origin;
+	
+
+	/* context 初始化 */
+	res = TEEC_InitializeContext(NULL, &ctx);
+	if (res != TEEC_SUCCESS)
+		errx(1, "TEEC_InitializeContext failed with code 0x%x", res);
+
+	/*打开session*/
+	res = TEEC_OpenSession(&ctx, &sess, &uuid, TEEC_LOGIN_PUBLIC, NULL, NULL, &err_origin);
+	if (res != TEEC_SUCCESS)
+		errx(1, "TEEC_Opensession failed with code 0x%x origin 0x%x",
+			 res, err_origin);
+
+	/*初始化操作*/
+	memset(&op, 0, sizeof(op));
+	memset((void *)&mem_p, 0, sizeof(mem_p));
+
+	/*设置共享内存的内容和大小和权限*/
+	mem_p.buffer = value;
+	mem_p.size = size;
+	mem_p.flags = TEEC_MEM_INPUT | TEEC_MEM_OUTPUT;
+
+	// 注册共享内存
+	res = TEEC_RegisterSharedMemory(&ctx, &mem_p);
+	if (res != TEEC_SUCCESS)
+	{
+		printf("Failed to register DATA shared memory\n");
+		TEEC_ReleaseSharedMemory(&mem_p);
+		TEEC_CloseSession(&sess);
+		exit(0);
+	}
+
+	// 传递共享内存至TEE端
+	op.paramTypes = TEEC_PARAM_TYPES(TEEC_MEMREF_WHOLE, TEEC_NONE, TEEC_NONE, TEEC_NONE);
+	op.params[0].memref.parent = &mem_p;
+
+	// 度量某个特定的基准值
+	printf("debug yht :度量基准值 has been called\n");
+	res = TEEC_InvokeCommand(&sess, TA_REE_AGENT_CMD_JUDGE_REFERENCE, &op, &err_origin);
+	if (res != TEEC_SUCCESS)
+		errx(1, "TEEC_InvokeCommand failed with code 0x%x origin 0x%x", res, err_origin);
+	printf("debug yht :度量基准值 successed\n");
+
+	// 结束会话
+	TEEC_CloseSession(&sess);
+	TEEC_FinalizeContext(&ctx);
+}
+
+// 请求TEE将度量报告传递来--------------------------------------------------------
+// 未完成
 
 int main(int argc, char* argv[])
 {
@@ -72,7 +341,7 @@ int main(int argc, char* argv[])
 	TEEC_Context ctx;
 	TEEC_Session sess;
 	TEEC_Operation op;
-	TEEC_SharedMemory mem_p;
+	//TEEC_SharedMemory mem_p;
 	TEEC_UUID uuid = TA_REE_AGENT_UUID;
 	uint32_t err_origin;
 	REEReferenceValue* ref;
@@ -162,7 +431,6 @@ int main(int argc, char* argv[])
 	if (res != TEEC_SUCCESS)
 		errx(1, "TEEC_InvokeCommand failed with code 0x%x origin 0x%x", res, err_origin);
 	printf("debug yht :度量基准值 successed\n");
-
 
 
 
