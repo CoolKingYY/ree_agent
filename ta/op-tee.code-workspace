@@ -1,0 +1,59 @@
+{
+	"folders": [
+		{
+			"name": "op-tee",
+			"path": "../../.."
+		}
+	],
+	"settings": {
+		"files.associations": {
+			"*.c": "c",
+			"*.in": "c",
+			"*.inc": "c",
+			"array": "c",
+			"initializer_list": "c",
+			"string_view": "c",
+			"utility": "c",
+			"system_error": "c",
+			"tee_internal_api_extensions.h": "c",
+			"istream": "c",
+			"ostream": "c",
+			"ratio": "c",
+			"type_traits": "c",
+			"random": "c",
+			"rope": "c",
+			"my_test_ta.h": "c",
+			"memory_resource": "c",
+			"scoped_allocator": "c",
+			"functional": "c",
+			"*.tcc": "c",
+			"fstream": "c",
+			"tee_api_defines.h": "c",
+			"hash_map": "c",
+			"hash_set": "c",
+			"future": "c",
+			"tee_api.h": "c",
+			"tee_internal_api.h": "c",
+			"*.idef": "c",
+			"*.def": "c",
+			"chrono": "c",
+			"optional": "c",
+			"sstream": "c",
+			"sm3.h": "c",
+			"tee_client_api.h": "c",
+			"platform_config.h": "c",
+			"secure_storage_ta.h": "c",
+			"stdint.h": "c",
+			"yht_ta.h": "c",
+			"tee_api_types.h": "c",
+			"stdio.h": "c",
+			"stdlib.h": "c",
+			"string.h": "c",
+			"user_ta_header_defines.h": "c",
+			"ree_agent_ta.h": "c",
+			"regex": "c",
+			"tuple": "c",
+			"variant": "c"
+		}
+	}
+}

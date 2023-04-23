@@ -44,7 +44,7 @@
 #define TEE_ERROR_GENERIC                 0xFFFF0000  // 通用错误
 #define TEE_ERROR_ACCESS_DENIED           0xFFFF0001  // 拒绝访问
 #define TEE_ERROR_CANCEL                  0xFFFF0002  // 操作被取消
-#define TEE_ERROR_ACCESS_CONFLICT         0xFFFF0003  // 访问冲突
+#define TEE_ERROR_ACCESS_CONFLICT         0xFFFF0003  // 访问冲突(句柄使用后雾关闭)
 #define TEE_ERROR_EXCESS_DATA             0xFFFF0004  // 数据过多
 #define TEE_ERROR_BAD_FORMAT              0xFFFF0005  // 格式错误
 #define TEE_ERROR_BAD_PARAMETERS          0xFFFF0006  // 无效参数

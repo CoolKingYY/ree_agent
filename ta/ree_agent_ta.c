@@ -43,8 +43,8 @@ static TEE_Result ref_temporary_storage_buffer(uint32_t param_types, TEE_Param p
 {
     // DMSG("Debug YHT : Allocated shared_memory in TA at address %p with size %u bytes\n", params[0].memref.buffer, params[0].memref.size);
     teebuf = TEE_Malloc(params[0].memref.size, TEE_MALLOC_FILL_ZERO);
-    sm3_hash = TEE_Malloc(HASH_SIZE, TEE_MALLOC_FILL_ZERO);
     memcpy(teebuf, params[0].memref.buffer, params[0].memref.size);
+    sm3_hash = TEE_Malloc(HASH_SIZE, TEE_MALLOC_FILL_ZERO);
     //----------------------------测试用的代码-----------------------------------------------------------------------------------------------------
     // 480/32 = 15 ,为了测试正常情况，此处选择使用第16个基准值作为后续的增、删、查、度量的测试用例
     unsigned char *digest_ptr = (unsigned char *)teebuf + 480;
@@ -67,15 +67,18 @@ static TEE_Result ref_temporary_storage_buffer(uint32_t param_types, TEE_Param p
     ref->value = teebuf;
     ref->length = params[0].memref.size;
 
-    // 测试代码，配置初始化TEE_Message参数
+    // 此部分为内核端的测试代码，配置初始化TEE_Message参数
+    int a = 16;
+    UINT32 *sm = TEE_Malloc(HASH_SIZE, TEE_MALLOC_FILL_ZERO);
+    calculate_sm3(&a, sizeof(int), sm);
     mem_data = (KernelMessage *)TEE_Malloc(sizeof(KernelMessage), TEE_MALLOC_FILL_ZERO);
     mem_data->operator_type = TA_REE_AGENT_CMD_MATCH_REFERENCE;
     mem_data->baseline_type = 0;
-    mem_data->num = 1;
+    mem_data->num = 2;
     mem_data->result = -1;
     tee_printf(sm3_hash, HASH_SIZE);
-    // mem_data->SM3_array = (Baseline *)TEE_Malloc(mem_data->num * HASH_SIZE, TEE_MALLOC_FILL_ZERO);
     mem_data->SM3_array[0] = *(Baseline *)sm3_hash;
+    mem_data->SM3_array[1] = *(Baseline *)sm;   // 此处如果被删除后，再次度量或查找会失败
     tee_printf(mem_data->SM3_array, mem_data->num * HASH_SIZE);
 
     return TEE_SUCCESS;
@@ -85,14 +88,17 @@ static TEE_Result ref_temporary_storage_buffer(uint32_t param_types, TEE_Param p
 static TEE_Result kernel_temporary_storage_buffer(uint32_t param_types, TEE_Param params[4])
 {
     TEE_Result res;
-    // mem_data = (KernelMessage *)(params[0].memref.buffer);
-    // DMSG("size of TEE Message: %d", sizeof(mem_data));
+    teebuf = TEE_Malloc(params[0].memref.size, TEE_MALLOC_FILL_ZERO);
+    memset(teebuf, 0, params[0].memref.size);
+    memcpy(teebuf, params[0].memref.buffer, params[0].memref.size);
+    mem_data = (KernelMessage *)teebuf;
+    DMSG("size of TEE Message: %lu", sizeof(mem_data));
     switch (mem_data->operator_type)
     {
     case TA_REE_AGENT_CMD_SM3:
         // 报文里的数据计算哈希传进持久化内存
         res = tee_reference_sm3(mem_data->SM3_array, mem_data->num);
-        return res;
+        break;
     case TA_REE_AGENT_CMD_ADD_REFERENCE:
         // 报文里的全部的基准值增加进持久化内存
         res = tee_reference_add(mem_data->SM3_array, mem_data->num);
@@ -103,7 +109,7 @@ static TEE_Result kernel_temporary_storage_buffer(uint32_t param_types, TEE_Para
         break;
     case TA_REE_AGENT_CMD_MATCH_REFERENCE:
         // 调用查看基准值的函数
-        res = tee_reference_match(mem_data->SM3_array, mem_data->num );
+        res = tee_reference_match(mem_data->SM3_array, mem_data->num);
         break;
     case TA_REE_AGENT_CMD_JUDGE_REFERENCE:
         // 调用度量基准值的函数
@@ -170,8 +176,6 @@ static TEE_Result create_persistent_mem(void)
         }
         TEE_CloseObject(object2); */
 
-    printf("#####################%d\n", mem_data->num);
-
     return TEE_SUCCESS;
 }
 
@@ -199,6 +203,7 @@ static TEE_Result tee_reference_add(void *value, uint32_t value_num)
     if (obj_info.dataSize / HASH_SIZE >= MAX_REFERENCES)
     {
         DMSG("持久化内存中的数据存储达到极限");
+        TEE_CloseObject(obj_add);
         return TEE_ERROR_STORAGE_NO_SPACE;
     }
     // printf("TEST:准备对持久化内存进行写入，此时持久化内存的大小为: %d\n", obj_info.dataSize);
@@ -211,7 +216,7 @@ static TEE_Result tee_reference_add(void *value, uint32_t value_num)
         return res;
     }
     // 写入数据，并且最后关闭句柄，保存数据
-    res = TEE_WriteObjectData(obj_add, value, value_num);
+    res = TEE_WriteObjectData(obj_add, value, value_num * HASH_SIZE);
     if (res != TEE_SUCCESS)
     {
         printf("TEE_WriteObjectData failed 0x%08x \n", res);
@@ -228,7 +233,7 @@ static TEE_Result tee_reference_add(void *value, uint32_t value_num)
 };
 
 // 匹配内存数据库中的基准值(value和value_num需要传入TEEReferenceValue结构体中的两个数据，这两个数据在ref_temporary_storage_buffer中被初始化)
-static TEE_Result tee_reference_match(void *value, uint32_t value_num)
+static TEE_Result tee_reference_match(void *value, uint32_t value_length)
 {
     TEE_Result res;
     TEE_ObjectHandle obj_match = TEE_HANDLE_NULL;
@@ -246,24 +251,18 @@ static TEE_Result tee_reference_match(void *value, uint32_t value_num)
     // DMSG("Debug YHT: TEE_OpenPersistentObject in match is success");
 
     // 获取持久化对象信息，包括数据总大小和当前位置
-    res = TEE_GetObjectInfo1(obj_match, &obj_info);
-    if (res != TEE_SUCCESS)
+    TEE_GetObjectInfo(obj_match, &obj_info);
+    printf("TEST : LENGTH = %d \n", value_length);
+    for (int num = 0; num < value_length; num++)
     {
-        DMSG("Error getting object info: %x\n", res);
-        goto err;
-    }
-    printf("TEST : LENGTH = %d \n", mem_data->num);
-    for (int num = 0; num < value_num; num++)
-    {
-
         printf("TEST : LENGTH = %d , NUM = %d\n", mem_data->num, num);
-        for (i = 0; i < obj_info.dataSize / HASH_SIZE; i++)
+        for (i = 0; i < obj_info.dataSize / 32; i++)
         {
-            uint8_t digest[HASH_SIZE];
+            uint8_t digest[32];
             uint32_t bytes_read = 0;
 
             // 定位到摘要值位置
-            res = TEE_SeekObjectData(obj_match, i * HASH_SIZE, TEE_DATA_SEEK_SET);
+            res = TEE_SeekObjectData(obj_match, i * 32, TEE_DATA_SEEK_SET);
             if (res != TEE_SUCCESS)
             {
                 DMSG("Error seeking obj_match data: %x\n", res);
@@ -279,7 +278,7 @@ static TEE_Result tee_reference_match(void *value, uint32_t value_num)
             }
 
             // 比较读取到的摘要值和需要查找的摘要值
-            if (memcmp(digest, value + i * HASH_SIZE, sizeof(digest)) == 0)
+            if (memcmp(digest, value + num * HASH_SIZE, sizeof(digest)) == 0)
             {
                 // 找到匹配的摘要值，打印并退出循环
                 // DMSG("Debug YHT : Found matching digest at position %d\n", i + 1);
@@ -288,14 +287,15 @@ static TEE_Result tee_reference_match(void *value, uint32_t value_num)
                 break;
             }
         }
-        if (i >= obj_info.dataSize / HASH_SIZE)
+        if (i >= obj_info.dataSize / 32)
         {
-            DMSG("Debug YHT: 匹配查找函数失败");
+            DMSG("Debug YHT: 匹配查找函数失败!");
+            TEE_CloseObject(obj_match);
             return TEE_ERROR_NO_DATA;
         }
     }
     TEE_CloseObject(obj_match);
-    printf("TEST : 调用match接口, 查询摘要值位置存储于持久化内存基准库第%d个基准值\n", i + 1);
+    printf("TEST:调用match接口, 查询摘要值位置存储于持久化内存基准库第%d个基准值\n", i + 1);
     DMSG("Debug YHT: 匹配查找函数 is successed");
     return TEE_SUCCESS;
 
@@ -310,11 +310,10 @@ static TEE_Result tee_reference_remove(void *value, uint32_t value_num)
     TEE_Result res;
     TEE_ObjectInfo obj_info;
     TEE_ObjectHandle obj_rm = TEE_HANDLE_NULL;
-    TEE_ObjectHandle obj_rm2 = TEE_HANDLE_NULL;                             // 测试用代码
+    TEE_ObjectHandle obj_rm2 = TEE_HANDLE_NULL; // 测试用代码
     uint32_t cur_pos = 0;
-    void *rm_mem = TEE_Malloc(size, TEE_MALLOC_FILL_ZERO);                  // 临时缓冲区，保存被截断数据后面的所有数据
-    int i = 0;                                                              // 循环查找使用
-    bool is_find = false;                                                   // 判断是否找到此基准
+    int i = 0;            // 循环查找使用
+    bool is_find = false; // 判断是否找到此基准
     uint32_t bytes_read;
     DMSG("删除基准值 has been called");
     // 打开持久化内存
@@ -329,7 +328,6 @@ static TEE_Result tee_reference_remove(void *value, uint32_t value_num)
     // 获取持久化对象信息，包括数据总大小和当前位置
     TEE_GetObjectInfo(obj_rm, &obj_info);
     printf("删除摘要值操作前的持久化内存的大小：%d\n", obj_info.dataSize);
-
     for (int num = 0; num < value_num; num++)
     {
         for (i = 0; i < obj_info.dataSize / HASH_SIZE; i++)
@@ -354,28 +352,36 @@ static TEE_Result tee_reference_remove(void *value, uint32_t value_num)
             }
 
             // 比较读取到的摘要值和需要查找的摘要值
-            if (memcmp(digest, value + i * HASH_SIZE), sizeof(digest)) == 0)
-                {
-                    // 找到匹配的摘要值，打印并退出循环
-                    printf("TEST : 发现待删除的基准值位置在基准库的第 %d 个基准值\n", i + 1);
-                    is_find = true;
-                    // 打印比较数据，测试用
-                    // tee_printf(digest, bytes_read);
-                    // 并且将定位指针指向此处，此处是查找到的基准值的起始处，删除基准值特有
-                    cur_pos = i * HASH_SIZE;
-                    break;
-                }
+            if (memcmp(digest, value + num * HASH_SIZE, sizeof(digest)) == 0)
+            {
+                // 找到匹配的摘要值，打印并退出循环
+                printf("TEST : 发现待删除的基准值位置在基准库的第 %d 个基准值\n", i + 1);
+                is_find = true;
+                // 打印比较数据，测试用
+                // tee_printf(digest, bytes_read);
+                // 并且将定位指针指向此处，此处是查找到的基准值的起始处，删除基准值特有
+                cur_pos = i * HASH_SIZE;
+                break;
+            }
         }
         // 判断是否找到此摘要值
         if (!is_find)
         {
             printf("Debug YHT: 持久化内存基准库中不存在待删除基准值！\n");
+            TEE_CloseObject(obj_rm);
             return TEE_ERROR_NO_DATA;
+        }
+        if(i == obj_info.dataSize / HASH_SIZE -1){
+            res = TEE_TruncateObjectData(obj_rm, cur_pos);
+            DMSG("删除的基准值位于基准库最后的位置，因此不需要再次写回，直接截断即可。");
+            TEE_CloseObject(obj_rm);
+            return res;
         }
 
         // 更新obj的数据位置,先保存待删除摘要值的后续部分
         // 读取不需被截断的数据流
-        int size = obj_info.dataSize - cur_pos - HASH_SIZE; // 被截断但待写回的数据的大小
+        int size = obj_info.dataSize - cur_pos - HASH_SIZE;    // 被截断但待写回的数据的大小
+        void *rm_mem = TEE_Malloc(size, TEE_MALLOC_FILL_ZERO); // 临时缓冲区，保存被截断数据后面的所有数据
         memset(rm_mem, 0, HASH_SIZE);
         bytes_read = 0;
         res = TEE_SeekObjectData(obj_rm, cur_pos + HASH_SIZE, TEE_DATA_SEEK_SET);
@@ -409,6 +415,7 @@ static TEE_Result tee_reference_remove(void *value, uint32_t value_num)
         }
         TEE_GetObjectInfo(obj_rm, &obj_info);
         printf("TEST : 单个基准值被删除后持久化内存的大小: %d\n ", obj_info.dataSize);
+        TEE_Free(rm_mem);
         DMSG("Debug YHT: 删除基准值 is successed");
     }
     TEE_GetObjectInfo(obj_rm, &obj_info);
@@ -430,7 +437,6 @@ static TEE_Result tee_reference_remove(void *value, uint32_t value_num)
     TEE_CloseObject(obj_rm2); */
     //-------------------------------------------------
 
-    TEE_Free(rm_mem);
     return TEE_SUCCESS;
 err:
     TEE_CloseObject(obj_rm);
@@ -501,6 +507,7 @@ void TA_CloseSessionEntryPoint(void __maybe_unused *sess_ctx)
 {
     (void)&sess_ctx; /* Unused parameter */
     TEE_Free(teebuf);
+    TEE_Free(sm3_hash);
     TEE_Free(mem_data);
     TEE_Free(ref);
     DMSG("Goodbye!\n");
@@ -551,5 +558,6 @@ TEE_Result TA_InvokeCommandEntryPoint(void __maybe_unused *sess_ctx, uint32_t cm
             return res;
         }
         mem_data->result = TEE_SUCCESS;
+        return TEE_SUCCESS;
     }
 }
