@@ -451,7 +451,6 @@ static TEE_Result tee_reference_judge(void *value, uint32_t value_length)
     return TEE_SUCCESS;
 }
 
-
 // 对于一些需要进行SM3计算的，进行计算SM3摘要值
 static TEE_Result tee_reference_sm3(void *value, uint32_t value_num)
 {
@@ -465,7 +464,6 @@ static TEE_Result tee_reference_sm3(void *value, uint32_t value_num)
         if (ret != 0)
         {
             printf("SM3 calculation failed!\n");
-            TEE_Free(sm3);
             return TEE_ERROR_SM3;
         }
         DMSG("SM3 SM3 SM3 SM3 SM3 SM3 SM3 SM3 SM3 SM3 SM3 SM3");
