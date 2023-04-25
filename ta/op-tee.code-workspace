@@ -3,6 +3,9 @@
 		{
 			"name": "op-tee",
 			"path": "../../.."
+		},
+		{
+			"path": "../../../../Desktop"
 		}
 	],
 	"settings": {
